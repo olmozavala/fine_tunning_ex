@@ -1,19 +1,24 @@
+# Standard library imports
+import numpy as np
+
+# Third-party imports
 import dash
-from dash import html, dcc
+from dash import html, dcc, no_update
 from dash.dependencies import Input, Output, State, ALL
 import plotly.graph_objects as go
 import torch
+
+# Local imports
 from models import get_model
-from data import get_nonlinear_data
+from data import get_base_data, get_fine_tune_data, combine_datasets
 from training import Trainer
-import numpy as np
-from dash import no_update
 
 # Set the default values
 DEFAULT_HIDDEN_SIZE = 20
 DEFAULT_BATCH_SIZE = 512
 DEFAULT_FINE_TUNE_METHOD = 'full'
-DEFAULT_DATA_SIZE = 10000
+DEFAULT_TRAINING_DATA_SIZE = 10000
+DEFAULT_FINE_TUNE_DATA_SIZE = 1000
 DEFAULT_TRAINING_STEPS = 20
 DEFAULT_LEARNING_RATE = 0.01
 DEFAULT_N_LAYERS = 10
@@ -73,7 +78,7 @@ def create_data_plot(base_data, fine_tune_data, model):
     
     if model is not None:
         # Add model predictions
-        x_range = torch.linspace(0, 6, 200).reshape(-1, 1)
+        x_range = torch.linspace(0, 4, 200).reshape(-1, 1)
         with torch.no_grad():
             y_pred = model(x_range)
         
@@ -161,8 +166,8 @@ def create_loss_plot(history):
 app = dash.Dash(__name__)
 
 # Initialize data at startup
-initial_base_data = get_nonlinear_data(0, 4, n_samples=DEFAULT_DATA_SIZE)
-initial_fine_tune_data = get_nonlinear_data(4, 6, n_samples=DEFAULT_DATA_SIZE)
+initial_base_data = get_base_data(n_samples=DEFAULT_TRAINING_DATA_SIZE)
+initial_fine_tune_data = get_fine_tune_data(n_samples=DEFAULT_FINE_TUNE_DATA_SIZE)
 
 app.layout = html.Div([
     html.Div([
@@ -310,8 +315,8 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
     
     # Initialize data if not already done
     if base_data is None:
-        base_data = get_nonlinear_data(0, 4, n_samples=DEFAULT_DATA_SIZE)
-        fine_tune_data = get_nonlinear_data(4, 6, n_samples=DEFAULT_DATA_SIZE)
+        base_data = get_base_data(n_samples=DEFAULT_TRAINING_DATA_SIZE)
+        fine_tune_data = get_fine_tune_data(n_samples=DEFAULT_FINE_TUNE_DATA_SIZE)
     
     if trigger_id == 'reset-button':
         # Reset everything except the data
@@ -353,7 +358,7 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
         if current_model is None:
             return no_update
         
-        # Fine-tune the model
+        # Fine-tune the model using only fine-tune data
         trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
         new_history = trainer.train(fine_tune_data, batch_size=batch_size, epochs=training_steps)
         
@@ -364,7 +369,7 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
             training_history['fine_tune']['train_loss'].extend(new_history['train_loss'])
             training_history['fine_tune']['val_loss'].extend(new_history['val_loss'])
             
-        status = f"Model fine-tuning continued using {fine_tune_method}"
+        status = f"Model fine-tuned on new data using {fine_tune_method}"
         enable_fine_tune = False
     
     # Create figures

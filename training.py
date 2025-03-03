@@ -23,66 +23,6 @@ class Trainer:
         elif self.fine_tune_method == 'lora':
             return optim.Adam(self.model.lora.parameters(), lr=self.learning_rate)
     
-    def training_step(self, x, y):
-        self.model.train()
-        self.optimizer.zero_grad()
-        
-        # Forward pass
-        pred = self.model(x)
-        loss = torch.nn.functional.mse_loss(pred, y)
-        
-        # Backward pass
-        loss.backward()
-        self.optimizer.step()
-        
-        return loss.item(), None  # Return None for gradients since we don't need them
-    
-    def compute_loss(self, x, y):
-        self.model.eval()
-        with torch.no_grad():
-            pred = self.model(x)
-            loss = torch.nn.functional.mse_loss(pred, y)
-        return loss.item()
-    
-    def validate(self, x, y):
-        return self.compute_loss(x, y)
-    
-    def train_epoch(self, train_data: Tuple[torch.Tensor, torch.Tensor], 
-                   val_data: Tuple[torch.Tensor, torch.Tensor],
-                   batch_size: int) -> Tuple[float, float, bool]:
-        """Train for one epoch and return training loss, validation loss, and whether to stop."""
-        x, y = train_data
-        val_x, val_y = val_data
-        indices = torch.randperm(len(x))
-        total_loss = 0
-        n_batches = 0
-        
-        for i in range(0, len(x), batch_size):
-            batch_indices = indices[i:i+batch_size]
-            batch_x = x[batch_indices]
-            batch_y = y[batch_indices]
-            
-            loss, _ = self.training_step(batch_x, batch_y)
-            total_loss += loss
-            n_batches += 1
-        
-        train_loss = total_loss / n_batches
-        val_loss = self.validate(val_x, val_y)
-        
-        self.train_losses.append(train_loss)
-        self.val_losses.append(val_loss)
-        
-        # Early stopping logic
-        if val_loss < self.best_val_loss:
-            self.best_val_loss = val_loss
-            self.patience_counter = 0
-        else:
-            self.patience_counter += 1
-            
-        should_stop = self.patience_counter >= 10
-        
-        return train_loss, val_loss, should_stop 
-
     def train(self, data, batch_size=64, epochs=100):
         x_train = data['train']['x']
         y_train = data['train']['y']
