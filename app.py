@@ -11,12 +11,12 @@ from dash import no_update
 
 # Set the default values
 DEFAULT_HIDDEN_SIZE = 20
-DEFAULT_BATCH_SIZE = 64
+DEFAULT_BATCH_SIZE = 128
 DEFAULT_FINE_TUNE_METHOD = 'full'
 DEFAULT_DATA_SIZE = 1000
-DEFAULT_TRAINING_STEPS = 100
+DEFAULT_TRAINING_STEPS = 20
 DEFAULT_LEARNING_RATE = 0.01
-DEFAULT_N_LAYERS = 2
+DEFAULT_N_LAYERS = 10
 
 def create_data_plot(base_data, fine_tune_data, model):
     fig = go.Figure()
@@ -82,7 +82,7 @@ def create_data_plot(base_data, fine_tune_data, model):
             y=y_pred.numpy().flatten(),
             mode='lines',
             name='Model Predictions',
-            line=dict(color='green', width=2)
+            line=dict(color='black', width=2)
         ))
     
     fig.update_layout(
@@ -195,17 +195,16 @@ app.layout = html.Div([
                 {'label': '20 layers', 'value': 20},
                 {'label': '30 layers', 'value': 30}
             ],
-            value=2
+            value=DEFAULT_N_LAYERS
         ),
         
         html.Label('Batch Size:'),
         dcc.Dropdown(
             id='batch-size',
             options=[
-                {'label': '16', 'value': 16},
-                {'label': '32', 'value': 32},
                 {'label': '64', 'value': 64},
-                {'label': '128', 'value': 128}
+                {'label': '128', 'value': 128},
+                {'label': '256', 'value': 256}
             ],
             value=DEFAULT_BATCH_SIZE
         ),
@@ -225,6 +224,7 @@ app.layout = html.Div([
         dcc.Dropdown(
             id='training-steps',
             options=[
+                {'label': '1 step', 'value': 1},
                 {'label': '10 steps', 'value': 10},
                 {'label': '20 steps', 'value': 20},
                 {'label': '50 steps', 'value': 50},
@@ -234,9 +234,22 @@ app.layout = html.Div([
             value=DEFAULT_TRAINING_STEPS
         ),
         
+        html.Label('Learning Rate:'),
+        dcc.Dropdown(
+            id='learning-rate',
+            options=[
+                {'label': '0.1', 'value': 0.1},
+                {'label': '0.01', 'value': 0.01},
+                {'label': '0.001', 'value': 0.001},
+                {'label': '0.0001', 'value': 0.0001}
+            ],
+            value=DEFAULT_LEARNING_RATE
+        ),
+        
         html.Div([
             html.Button('Train Base Model', id='train-base-button', n_clicks=0),
-            html.Button('Fine-tune', id='fine-tune-button', n_clicks=0, disabled=True)
+            html.Button('Fine-tune', id='fine-tune-button', n_clicks=0, disabled=True),
+            html.Button('Reset Training', id='reset-button', n_clicks=0)
         ], style={'marginTop': '20px'}),
         
         html.Div([
@@ -271,13 +284,16 @@ training_history = {'base': [], 'fine_tune': []}
     Input('n-layers', 'value'),
     Input('train-base-button', 'n_clicks'),
     Input('fine-tune-button', 'n_clicks'),
+    Input('reset-button', 'n_clicks'),
     State('batch-size', 'value'),
     State('fine-tune-method', 'value'),
     State('training-steps', 'value'),
+    State('learning-rate', 'value'),
     prevent_initial_call=True
 )
 def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks, 
-                batch_size, fine_tune_method, training_steps):
+                reset_clicks, batch_size, fine_tune_method, training_steps,
+                learning_rate):
     global current_model, base_data, fine_tune_data, training_history
     
     ctx = dash.callback_context
@@ -293,6 +309,14 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
         base_data = get_nonlinear_data(0, 4, n_samples=DEFAULT_DATA_SIZE)
         fine_tune_data = get_nonlinear_data(4, 6, n_samples=DEFAULT_DATA_SIZE)
     
+    if trigger_id == 'reset-button':
+        # Reset everything except the data
+        current_model = None
+        training_history = {'base': [], 'fine_tune': []}
+        return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
+               create_loss_plot({'base': [], 'fine_tune': []}), \
+               "Training reset. Click 'Train Base Model' to start"
+    
     if trigger_id in ['hidden-size', 'n-layers']:  # Reset on either parameter change
         # Reset everything when architecture changes
         current_model = None
@@ -302,11 +326,23 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
                "Model reset. Click 'Train Base Model' to start"
     
     elif trigger_id == 'train-base-button':
-        # Initialize new model and train on base data
-        current_model = get_model(hidden_size, fine_tune_method, n_layers)
-        trainer = Trainer(current_model, fine_tune_method)
-        training_history['base'] = trainer.train(base_data, batch_size=batch_size, epochs=training_steps)
-        status = "Base model trained"
+        if current_model is None:
+            # Initialize new model if none exists
+            current_model = get_model(hidden_size, fine_tune_method, n_layers)
+            training_history['base'] = []
+        
+        # Continue training the existing model
+        trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
+        new_history = trainer.train(base_data, batch_size=batch_size, epochs=training_steps)
+        
+        # Append new training history to existing history
+        if not training_history['base']:
+            training_history['base'] = new_history
+        else:
+            training_history['base']['train_loss'].extend(new_history['train_loss'])
+            training_history['base']['val_loss'].extend(new_history['val_loss'])
+            
+        status = "Base model training continued"
         enable_fine_tune = False
         
     elif trigger_id == 'fine-tune-button':
@@ -314,7 +350,7 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
             return no_update
         
         # Fine-tune the model
-        trainer = Trainer(current_model, fine_tune_method)
+        trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
         training_history['fine_tune'] = trainer.train(fine_tune_data, batch_size=batch_size, epochs=training_steps)
         status = f"Model fine-tuned using {fine_tune_method}"
         enable_fine_tune = True
