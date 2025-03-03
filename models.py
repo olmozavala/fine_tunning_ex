@@ -22,32 +22,57 @@ class LoRALayer(nn.Module):
         return self.lora_B(self.lora_A(x)) * self.scaling
 
 class BaseModel(nn.Module):
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, n_layers=1):
         super().__init__()
-        self.hidden = nn.Linear(1, hidden_size)
+        self.layers = nn.ModuleList()
+        self.bn_layers = nn.ModuleList()
+        
+        # Input layer
+        self.layers.append(nn.Linear(1, hidden_size))
+        self.bn_layers.append(nn.BatchNorm1d(hidden_size))
+        
+        # Hidden layers
+        for _ in range(n_layers - 1):
+            self.layers.append(nn.Linear(hidden_size, hidden_size))
+            self.bn_layers.append(nn.BatchNorm1d(hidden_size))
+            
+        # Output layer
         self.output = nn.Linear(hidden_size, 1)
         self.activation = nn.ReLU()
         
     def forward(self, x):
-        h = self.activation(self.hidden(x))
-        return self.output(h)
+        for layer, bn in zip(self.layers, self.bn_layers):
+            x = layer(x)
+            x = bn(x)
+            x = self.activation(x)
+        return self.output(x)
 
-def get_model(hidden_size, fine_tune_type='full'):
-    model = BaseModel(hidden_size)
+def get_model(hidden_size, fine_tune_type='full', n_layers=1):
+    model = BaseModel(hidden_size, n_layers)
     
     if fine_tune_type == 'adapter':
         model.adapter = Adapter(hidden_size)
         def forward_with_adapter(self, x):
-            h = self.activation(self.hidden(x))
-            h = self.adapter(h)
-            return self.output(h)
+            # Apply all layers with batch norm
+            for layer, bn in zip(self.layers, self.bn_layers):
+                x = layer(x)
+                x = bn(x)
+                x = self.activation(x)
+            x = self.adapter(x)
+            return self.output(x)
         model.forward = forward_with_adapter.__get__(model)
         
     elif fine_tune_type == 'lora':
         model.lora = LoRALayer(1, hidden_size)
         def forward_with_lora(self, x):
-            h = self.activation(self.hidden(x) + self.lora(x))
-            return self.output(h)
+            # First layer with LoRA
+            x = self.activation(self.bn_layers[0](self.layers[0](x) + self.lora(x)))
+            # Rest of the layers
+            for layer, bn in list(zip(self.layers, self.bn_layers))[1:]:
+                x = layer(x)
+                x = bn(x)
+                x = self.activation(x)
+            return self.output(x)
         model.forward = forward_with_lora.__get__(model)
     
     return model 

@@ -16,6 +16,7 @@ DEFAULT_FINE_TUNE_METHOD = 'full'
 DEFAULT_DATA_SIZE = 1000
 DEFAULT_TRAINING_STEPS = 100
 DEFAULT_LEARNING_RATE = 0.01
+DEFAULT_N_LAYERS = 2
 
 def create_data_plot(base_data, fine_tune_data, model):
     fig = go.Figure()
@@ -185,6 +186,18 @@ app.layout = html.Div([
             value=DEFAULT_HIDDEN_SIZE
         ),
         
+        html.Label('Number of Hidden Layers:'),
+        dcc.Dropdown(
+            id='n-layers',
+            options=[
+                {'label': '2 layers', 'value': 2},
+                {'label': '10 layers', 'value': 10},
+                {'label': '20 layers', 'value': 20},
+                {'label': '30 layers', 'value': 30}
+            ],
+            value=2
+        ),
+        
         html.Label('Batch Size:'),
         dcc.Dropdown(
             id='batch-size',
@@ -255,6 +268,7 @@ training_history = {'base': [], 'fine_tune': []}
     Output('loss-plot', 'figure'),
     Output('status-display', 'children'),
     Input('hidden-size', 'value'),
+    Input('n-layers', 'value'),
     Input('train-base-button', 'n_clicks'),
     Input('fine-tune-button', 'n_clicks'),
     State('batch-size', 'value'),
@@ -262,7 +276,8 @@ training_history = {'base': [], 'fine_tune': []}
     State('training-steps', 'value'),
     prevent_initial_call=True
 )
-def update_model(hidden_size, base_clicks, fine_tune_clicks, batch_size, fine_tune_method, training_steps):
+def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks, 
+                batch_size, fine_tune_method, training_steps):
     global current_model, base_data, fine_tune_data, training_history
     
     ctx = dash.callback_context
@@ -278,8 +293,8 @@ def update_model(hidden_size, base_clicks, fine_tune_clicks, batch_size, fine_tu
         base_data = get_nonlinear_data(0, 4, n_samples=DEFAULT_DATA_SIZE)
         fine_tune_data = get_nonlinear_data(4, 6, n_samples=DEFAULT_DATA_SIZE)
     
-    if trigger_id == 'hidden-size':
-        # Reset everything when hidden size changes
+    if trigger_id in ['hidden-size', 'n-layers']:  # Reset on either parameter change
+        # Reset everything when architecture changes
         current_model = None
         training_history = {'base': [], 'fine_tune': []}
         return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
@@ -288,11 +303,11 @@ def update_model(hidden_size, base_clicks, fine_tune_clicks, batch_size, fine_tu
     
     elif trigger_id == 'train-base-button':
         # Initialize new model and train on base data
-        current_model = get_model(hidden_size, fine_tune_method)
+        current_model = get_model(hidden_size, fine_tune_method, n_layers)
         trainer = Trainer(current_model, fine_tune_method)
         training_history['base'] = trainer.train(base_data, batch_size=batch_size, epochs=training_steps)
         status = "Base model trained"
-        enable_fine_tune = False  # Enable fine-tuning after base training
+        enable_fine_tune = False
         
     elif trigger_id == 'fine-tune-button':
         if current_model is None:
@@ -302,13 +317,12 @@ def update_model(hidden_size, base_clicks, fine_tune_clicks, batch_size, fine_tu
         trainer = Trainer(current_model, fine_tune_method)
         training_history['fine_tune'] = trainer.train(fine_tune_data, batch_size=batch_size, epochs=training_steps)
         status = f"Model fine-tuned using {fine_tune_method}"
-        enable_fine_tune = True  # Disable fine-tuning after it's done
+        enable_fine_tune = True
     
     # Create figures
     data_fig = create_data_plot(base_data, fine_tune_data, current_model)
     loss_fig = create_loss_plot(training_history)
     
-    # Keep current click values
     return base_clicks, fine_tune_clicks, enable_fine_tune, data_fig, loss_fig, status
 
 if __name__ == '__main__':
