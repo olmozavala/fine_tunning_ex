@@ -61,4 +61,39 @@ def get_fine_tune_data(x_min=2, x_max=3, n_samples=1000, val_ratio=0.1, noise_st
     return {
         'train': {'x': x[train_indices], 'y': y[train_indices]},
         'val': {'x': x[val_indices], 'y': y[val_indices]}
+    }
+
+def combine_datasets_with_replacement(base_data, fine_tune_data):
+    """Combine datasets but replace base data with fine-tune data in the [2,3] range."""
+    # Get numpy arrays for easier manipulation
+    x_base_train = base_data['train']['x'].numpy().reshape(-1)  # Flatten to 1D
+    y_base_train = base_data['train']['y'].numpy().reshape(-1)  # Flatten to 1D
+    x_base_val = base_data['val']['x'].numpy().reshape(-1)      # Flatten to 1D
+    y_base_val = base_data['val']['y'].numpy().reshape(-1)      # Flatten to 1D
+    
+    x_fine_train = fine_tune_data['train']['x'].numpy().reshape(-1)  # Flatten to 1D
+    y_fine_train = fine_tune_data['train']['y'].numpy().reshape(-1)  # Flatten to 1D
+    x_fine_val = fine_tune_data['val']['x'].numpy().reshape(-1)      # Flatten to 1D
+    y_fine_val = fine_tune_data['val']['y'].numpy().reshape(-1)      # Flatten to 1D
+    
+    # Remove base data points in [2,3] range
+    train_mask = ~((x_base_train >= 2) & (x_base_train <= 3))
+    val_mask = ~((x_base_val >= 2) & (x_base_val <= 3))
+    
+    # Combine filtered base data with fine-tune data
+    x_train = np.concatenate([x_base_train[train_mask], x_fine_train])
+    y_train = np.concatenate([y_base_train[train_mask], y_fine_train])
+    x_val = np.concatenate([x_base_val[val_mask], x_fine_val])
+    y_val = np.concatenate([y_base_val[val_mask], y_fine_val])
+    
+    # Convert back to torch tensors and reshape to (-1, 1)
+    return {
+        'train': {
+            'x': torch.FloatTensor(x_train).reshape(-1, 1),
+            'y': torch.FloatTensor(y_train).reshape(-1, 1)
+        },
+        'val': {
+            'x': torch.FloatTensor(x_val).reshape(-1, 1),
+            'y': torch.FloatTensor(y_val).reshape(-1, 1)
+        }
     } 

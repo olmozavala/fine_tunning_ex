@@ -16,12 +16,15 @@ class Trainer:
         self.patience_counter = 0
         
     def configure_optimizer(self):
-        if self.fine_tune_method == 'full':
+        if self.fine_tune_method == 'none' or self.fine_tune_method == 'full':
             return optim.Adam(self.model.parameters(), lr=self.learning_rate)
         elif self.fine_tune_method == 'adapter':
             return optim.Adam(self.model.adapter.parameters(), lr=self.learning_rate)
         elif self.fine_tune_method == 'lora':
             return optim.Adam(self.model.lora.parameters(), lr=self.learning_rate)
+        elif self.fine_tune_method == 'freeze':
+            return optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()), 
+                             lr=self.learning_rate)
     
     def train(self, data, batch_size=64, epochs=100):
         x_train = data['train']['x']

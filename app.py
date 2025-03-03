@@ -10,18 +10,19 @@ import torch
 
 # Local imports
 from models import get_model
-from data import get_base_data, get_fine_tune_data, combine_datasets
+from data import get_base_data, get_fine_tune_data, combine_datasets, combine_datasets_with_replacement
 from training import Trainer
 
 # Set the default values
 DEFAULT_HIDDEN_SIZE = 20
 DEFAULT_BATCH_SIZE = 512
-DEFAULT_FINE_TUNE_METHOD = 'full'
+DEFAULT_FINE_TUNE_METHOD = 'none'
 DEFAULT_TRAINING_DATA_SIZE = 10000
 DEFAULT_FINE_TUNE_DATA_SIZE = 1000
 DEFAULT_TRAINING_STEPS = 20
 DEFAULT_LEARNING_RATE = 0.01
 DEFAULT_N_LAYERS = 10
+DEFAULT_FINE_TUNE_DATA_MODE = 'combined'
 
 def create_data_plot(base_data, fine_tune_data, model):
     fig = go.Figure()
@@ -222,11 +223,23 @@ app.layout = html.Div([
         dcc.Dropdown(
             id='fine-tune-method',
             options=[
+                {'label': 'None', 'value': 'none'},
                 {'label': 'Full Fine-tuning', 'value': 'full'},
                 {'label': 'Adapter', 'value': 'adapter'},
-                {'label': 'LoRA', 'value': 'lora'}
+                {'label': 'LoRA', 'value': 'lora'},
+                {'label': 'Freeze First 10', 'value': 'freeze'}
             ],
             value=DEFAULT_FINE_TUNE_METHOD
+        ),
+        
+        html.Label('Fine-tuning Data:'),
+        dcc.Dropdown(
+            id='fine-tune-data-mode',
+            options=[
+                {'label': 'Only New Data', 'value': 'only_new'},
+                {'label': 'Combined Data', 'value': 'combined'}
+            ],
+            value=DEFAULT_FINE_TUNE_DATA_MODE
         ),
         
         html.Label('Training Steps:'),
@@ -298,11 +311,12 @@ training_history = {'base': [], 'fine_tune': []}
     State('fine-tune-method', 'value'),
     State('training-steps', 'value'),
     State('learning-rate', 'value'),
+    State('fine-tune-data-mode', 'value'),
     prevent_initial_call=True
 )
 def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks, 
                 reset_clicks, batch_size, fine_tune_method, training_steps,
-                learning_rate):
+                learning_rate, fine_tune_data_mode):
     global current_model, base_data, fine_tune_data, training_history
     
     ctx = dash.callback_context
@@ -358,9 +372,17 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
         if current_model is None:
             return no_update
         
-        # Fine-tune the model using only fine-tune data
+        # Prepare fine-tuning data based on selected mode
+        if fine_tune_data_mode == 'only_new':
+            train_data = fine_tune_data
+            mode_desc = "new data only"
+        else:  # combined
+            train_data = combine_datasets_with_replacement(base_data, fine_tune_data)
+            mode_desc = "combined data"
+        
+        # Fine-tune the model
         trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
-        new_history = trainer.train(fine_tune_data, batch_size=batch_size, epochs=training_steps)
+        new_history = trainer.train(train_data, batch_size=batch_size, epochs=training_steps)
         
         # Append new training history to existing history
         if not training_history['fine_tune']:
@@ -369,7 +391,7 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
             training_history['fine_tune']['train_loss'].extend(new_history['train_loss'])
             training_history['fine_tune']['val_loss'].extend(new_history['val_loss'])
             
-        status = f"Model fine-tuned on new data using {fine_tune_method}"
+        status = f"Model fine-tuned on {mode_desc} using {fine_tune_method}"
         enable_fine_tune = False
     
     # Create figures
