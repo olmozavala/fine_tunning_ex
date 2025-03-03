@@ -11,9 +11,9 @@ from dash import no_update
 
 # Set the default values
 DEFAULT_HIDDEN_SIZE = 20
-DEFAULT_BATCH_SIZE = 128
+DEFAULT_BATCH_SIZE = 512
 DEFAULT_FINE_TUNE_METHOD = 'full'
-DEFAULT_DATA_SIZE = 1000
+DEFAULT_DATA_SIZE = 10000
 DEFAULT_TRAINING_STEPS = 20
 DEFAULT_LEARNING_RATE = 0.01
 DEFAULT_N_LAYERS = 10
@@ -204,7 +204,11 @@ app.layout = html.Div([
             options=[
                 {'label': '64', 'value': 64},
                 {'label': '128', 'value': 128},
-                {'label': '256', 'value': 256}
+                {'label': '256', 'value': 256},
+                {'label': '512', 'value': 512},
+                {'label': '1024', 'value': 1024},
+                {'label': '2048', 'value': 2048},
+                {'label': '4096', 'value': 4096}
             ],
             value=DEFAULT_BATCH_SIZE
         ),
@@ -351,15 +355,26 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
         
         # Fine-tune the model
         trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
-        training_history['fine_tune'] = trainer.train(fine_tune_data, batch_size=batch_size, epochs=training_steps)
-        status = f"Model fine-tuned using {fine_tune_method}"
-        enable_fine_tune = True
+        new_history = trainer.train(fine_tune_data, batch_size=batch_size, epochs=training_steps)
+        
+        # Append new training history to existing history
+        if not training_history['fine_tune']:
+            training_history['fine_tune'] = new_history
+        else:
+            training_history['fine_tune']['train_loss'].extend(new_history['train_loss'])
+            training_history['fine_tune']['val_loss'].extend(new_history['val_loss'])
+            
+        status = f"Model fine-tuning continued using {fine_tune_method}"
+        enable_fine_tune = False
     
     # Create figures
     data_fig = create_data_plot(base_data, fine_tune_data, current_model)
     loss_fig = create_loss_plot(training_history)
     
-    return base_clicks, fine_tune_clicks, enable_fine_tune, data_fig, loss_fig, status
+    # Always enable fine-tune button if we have a trained model
+    should_disable_fine_tune = current_model is None
+    
+    return base_clicks, fine_tune_clicks, should_disable_fine_tune, data_fig, loss_fig, status
 
 if __name__ == '__main__':
     app.run_server(debug=True) 
