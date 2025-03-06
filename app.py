@@ -24,42 +24,58 @@ DEFAULT_LEARNING_RATE = 0.001
 DEFAULT_N_LAYERS = 11
 DEFAULT_FINE_TUNE_DATA_MODE = 'combined'
 
-def create_data_plot(base_data, fine_tune_data, model):
+def create_data_plot(base_data, fine_tune_data, model, fine_tune_method='none'):
     fig = go.Figure()
     
     if base_data is not None:
-        # Convert tensors to numpy arrays if they're not already
         x_base_train = base_data['train']['x'].numpy() if isinstance(base_data['train']['x'], torch.Tensor) else base_data['train']['x']
         y_base_train = base_data['train']['y'].numpy() if isinstance(base_data['train']['y'], torch.Tensor) else base_data['train']['y']
         x_base_val = base_data['val']['x'].numpy() if isinstance(base_data['val']['x'], torch.Tensor) else base_data['val']['x']
         y_base_val = base_data['val']['y'].numpy() if isinstance(base_data['val']['y'], torch.Tensor) else base_data['val']['y']
         
-        # Plot base training data
-        fig.add_trace(go.Scatter(
-            x=x_base_train.flatten(), 
-            y=y_base_train.flatten(),
-            mode='markers', 
-            name='Base Training',
-            marker=dict(color='blue', size=8, symbol='circle')
-        ))
-        
-        # Plot base validation data
-        fig.add_trace(go.Scatter(
-            x=x_base_val.flatten(), 
-            y=y_base_val.flatten(),
-            mode='markers', 
-            name='Base Validation',
-            marker=dict(color='lightblue', size=12, symbol='star')
-        ))
+        if fine_tune_method == 'none':
+            # For 'none', show all blue points
+            fig.add_trace(go.Scatter(
+                x=x_base_train.flatten(), 
+                y=y_base_train.flatten(),
+                mode='markers', 
+                name='Base Training',
+                marker=dict(color='blue', size=8, symbol='circle')
+            ))
+            fig.add_trace(go.Scatter(
+                x=x_base_val.flatten(), 
+                y=y_base_val.flatten(),
+                mode='markers', 
+                name='Base Validation',
+                marker=dict(color='lightblue', size=12, symbol='star')
+            ))
+        else:
+            # For other methods, filter out base points in [2,3] range
+            train_mask = ~((x_base_train >= 2) & (x_base_train <= 3))
+            val_mask = ~((x_base_val >= 2) & (x_base_val <= 3))
+            
+            fig.add_trace(go.Scatter(
+                x=x_base_train[train_mask].flatten(), 
+                y=y_base_train[train_mask].flatten(),
+                mode='markers', 
+                name='Base Training',
+                marker=dict(color='blue', size=8, symbol='circle')
+            ))
+            fig.add_trace(go.Scatter(
+                x=x_base_val[val_mask].flatten(), 
+                y=y_base_val[val_mask].flatten(),
+                mode='markers', 
+                name='Base Validation',
+                marker=dict(color='lightblue', size=12, symbol='star')
+            ))
     
-    if fine_tune_data is not None:
-        # Convert tensors to numpy arrays if they're not already
+    # Always show fine-tune data if method is not 'none'
+    if fine_tune_data is not None and fine_tune_method != 'none':
         x_fine_train = fine_tune_data['train']['x'].numpy() if isinstance(fine_tune_data['train']['x'], torch.Tensor) else fine_tune_data['train']['x']
         y_fine_train = fine_tune_data['train']['y'].numpy() if isinstance(fine_tune_data['train']['y'], torch.Tensor) else fine_tune_data['train']['y']
         x_fine_val = fine_tune_data['val']['x'].numpy() if isinstance(fine_tune_data['val']['x'], torch.Tensor) else fine_tune_data['val']['x']
         y_fine_val = fine_tune_data['val']['y'].numpy() if isinstance(fine_tune_data['val']['y'], torch.Tensor) else fine_tune_data['val']['y']
         
-        # Plot fine-tune training data
         fig.add_trace(go.Scatter(
             x=x_fine_train.flatten(), 
             y=y_fine_train.flatten(),
@@ -67,8 +83,6 @@ def create_data_plot(base_data, fine_tune_data, model):
             name='Fine-tune Training',
             marker=dict(color='red', size=8, symbol='circle')
         ))
-        
-        # Plot fine-tune validation data
         fig.add_trace(go.Scatter(
             x=x_fine_val.flatten(), 
             y=y_fine_val.flatten(),
@@ -169,11 +183,12 @@ app = dash.Dash(__name__)
 # Initialize data at startup
 initial_base_data = get_base_data(n_samples=DEFAULT_TRAINING_DATA_SIZE)
 initial_fine_tune_data = get_fine_tune_data(n_samples=DEFAULT_FINE_TUNE_DATA_SIZE)
+initial_model = get_model(DEFAULT_HIDDEN_SIZE, DEFAULT_FINE_TUNE_METHOD, DEFAULT_N_LAYERS)  # Create initial model
 
 app.layout = html.Div([
     html.Div([
         dcc.Graph(id='data-plot', 
-                 figure=create_data_plot(initial_base_data, initial_fine_tune_data, None)),
+                 figure=create_data_plot(initial_base_data, initial_fine_tune_data, initial_model)),  # Pass initial_model
         dcc.Graph(id='loss-plot',
                  figure=create_loss_plot({'base': [], 'fine_tune': []})),
     ], style={'width': '60%', 'display': 'inline-block'}),
@@ -304,15 +319,15 @@ training_history = {'base': [], 'fine_tune': []}
     Input('train-base-button', 'n_clicks'),
     Input('fine-tune-button', 'n_clicks'),
     Input('reset-button', 'n_clicks'),
+    Input('fine-tune-method', 'value'),
     State('batch-size', 'value'),
-    State('fine-tune-method', 'value'),
     State('training-steps', 'value'),
     State('learning-rate', 'value'),
     State('fine-tune-data-mode', 'value'),
     prevent_initial_call=True
 )
 def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks, 
-                reset_clicks, batch_size, fine_tune_method, training_steps,
+                reset_clicks, fine_tune_method, batch_size, training_steps,
                 learning_rate, fine_tune_data_mode):
     global current_model, base_data, fine_tune_data, training_history
     
@@ -332,17 +347,17 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
     try:
         if trigger_id == 'reset-button':
             # Reset everything except the data
-            current_model = None
+            current_model = get_model(hidden_size, fine_tune_method, n_layers)  # Create new model instead of None
             training_history = {'base': [], 'fine_tune': []}
-            return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
+            return 0, 0, True, create_data_plot(base_data, fine_tune_data, current_model), \
                    create_loss_plot({'base': [], 'fine_tune': []}), \
                    "Training reset. Click 'Train Base Model' to start"
         
         if trigger_id in ['hidden-size', 'n-layers']:  # Reset on either parameter change
             # Reset everything when architecture changes
-            current_model = None
+            current_model = get_model(hidden_size, fine_tune_method, n_layers)  # Create new model instead of None
             training_history = {'base': [], 'fine_tune': []}
-            return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
+            return 0, 0, True, create_data_plot(base_data, fine_tune_data, current_model), \
                    create_loss_plot({'base': [], 'fine_tune': []}), \
                    "Model reset. Click 'Train Base Model' to start"
         
@@ -394,11 +409,16 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
             status = f"Model fine-tuned on {mode_desc} using {fine_tune_method}"
         
         # Create figures
-        data_fig = create_data_plot(base_data, fine_tune_data, current_model)
+        data_fig = create_data_plot(base_data, fine_tune_data, current_model, fine_tune_method)
         loss_fig = create_loss_plot(training_history)
         
         # Always enable fine-tune button if we have a trained model
         should_disable_fine_tune = current_model is None
+        
+        if trigger_id == 'fine-tune-method':
+            return base_clicks, fine_tune_clicks, should_disable_fine_tune, \
+                   create_data_plot(base_data, fine_tune_data, current_model, fine_tune_method), \
+                   loss_fig, "Fine-tuning method changed"
         
         return base_clicks, fine_tune_clicks, should_disable_fine_tune, data_fig, loss_fig, status
     
