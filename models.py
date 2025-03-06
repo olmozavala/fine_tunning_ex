@@ -50,41 +50,36 @@ class BaseModel(nn.Module):
 def get_model(hidden_size, fine_tune_type='none', n_layers=1):
     model = BaseModel(hidden_size, n_layers)
     
-    # First ensure all parameters are unfrozen
+    # First ensure all parameters are unfrozen for initial training
     for param in model.parameters():
         param.requires_grad = True
     
-    if fine_tune_type == 'none':
-        # For 'none', we don't freeze parameters during initial training
-        pass  # Remove the freezing code here
-    elif fine_tune_type == 'adapter':
-        model.adapter = Adapter(hidden_size)
-        def forward_with_adapter(self, x):
-            for layer, bn in zip(self.layers, self.bn_layers):
-                x = layer(x)
-                x = bn(x)
-                x = self.activation(x)
-            x = self.adapter(x)
-            return self.output(x)
-        model.forward = forward_with_adapter.__get__(model)
-        
-    elif fine_tune_type == 'lora':
-        model.lora = LoRALayer(1, hidden_size)
-        def forward_with_lora(self, x):
-            x = self.activation(self.bn_layers[0](self.layers[0](x) + self.lora(x)))
-            for layer, bn in list(zip(self.layers, self.bn_layers))[1:]:
-                x = layer(x)
-                x = bn(x)
-                x = self.activation(x)
-            return self.output(x)
-        model.forward = forward_with_lora.__get__(model)
-    
-    elif fine_tune_type == 'freeze':
-        # Freeze first 10 layers and their batch norms
-        for i in range(min(10, len(model.layers))):
-            for param in model.layers[i].parameters():
+    # Only freeze parameters during fine-tuning
+    if hasattr(model, 'is_fine_tuning'):
+        if fine_tune_type == 'none':
+            # Freeze all parameters for 'none' only during fine-tuning
+            for param in model.parameters():
                 param.requires_grad = False
-            for param in model.bn_layers[i].parameters():
-                param.requires_grad = False
+        elif fine_tune_type == 'freeze6':
+            # Freeze first 6 layers and their batch norms
+            for i in range(min(6, len(model.layers))):
+                for param in model.layers[i].parameters():
+                    param.requires_grad = False
+                for param in model.bn_layers[i].parameters():
+                    param.requires_grad = False
+        elif fine_tune_type == 'freeze8':
+            # Freeze first 8 layers and their batch norms
+            for i in range(min(8, len(model.layers))):
+                for param in model.layers[i].parameters():
+                    param.requires_grad = False
+                for param in model.bn_layers[i].parameters():
+                    param.requires_grad = False
+        elif fine_tune_type == 'freeze10':
+            # Freeze first 10 layers and their batch norms
+            for i in range(min(10, len(model.layers))):
+                for param in model.layers[i].parameters():
+                    param.requires_grad = False
+                for param in model.bn_layers[i].parameters():
+                    param.requires_grad = False
     
     return model 

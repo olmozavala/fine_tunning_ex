@@ -16,13 +16,14 @@ class Trainer:
         self.patience_counter = 0
         
     def configure_optimizer(self):
-        if self.fine_tune_method == 'none' or self.fine_tune_method == 'full':
+        if self.fine_tune_method == 'none':
+            # For 'none', create optimizer but parameters are frozen
             return optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        elif self.fine_tune_method == 'adapter':
-            return optim.Adam(self.model.adapter.parameters(), lr=self.learning_rate)
-        elif self.fine_tune_method == 'lora':
-            return optim.Adam(self.model.lora.parameters(), lr=self.learning_rate)
-        elif self.fine_tune_method == 'freeze':
+        elif self.fine_tune_method == 'full':
+            # For full fine-tuning, optimize all parameters
+            return optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        elif self.fine_tune_method in ['freeze6', 'freeze8', 'freeze10']:
+            # Only optimize unfrozen parameters for any freeze method
             return optim.Adam(filter(lambda p: p.requires_grad, self.model.parameters()), 
                              lr=self.learning_rate)
     

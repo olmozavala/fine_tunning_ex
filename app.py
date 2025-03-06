@@ -19,9 +19,9 @@ DEFAULT_BATCH_SIZE = 512
 DEFAULT_FINE_TUNE_METHOD = 'none'
 DEFAULT_TRAINING_DATA_SIZE = 10000
 DEFAULT_FINE_TUNE_DATA_SIZE = 1000
-DEFAULT_TRAINING_STEPS = 20
-DEFAULT_LEARNING_RATE = 0.01
-DEFAULT_N_LAYERS = 10
+DEFAULT_TRAINING_STEPS = 50
+DEFAULT_LEARNING_RATE = 0.001
+DEFAULT_N_LAYERS = 11
 DEFAULT_FINE_TUNE_DATA_MODE = 'combined'
 
 def create_data_plot(base_data, fine_tune_data, model):
@@ -196,12 +196,9 @@ app.layout = html.Div([
         dcc.Dropdown(
             id='n-layers',
             options=[
-                {'label': '2 layers', 'value': 2},
-                {'label': '10 layers', 'value': 10},
-                {'label': '20 layers', 'value': 20},
-                {'label': '30 layers', 'value': 30}
+                {'label': '11 layers', 'value': 11}
             ],
-            value=DEFAULT_N_LAYERS
+            value=11
         ),
         
         html.Label('Batch Size:'),
@@ -225,9 +222,9 @@ app.layout = html.Div([
             options=[
                 {'label': 'None', 'value': 'none'},
                 {'label': 'Full Fine-tuning', 'value': 'full'},
-                {'label': 'Adapter', 'value': 'adapter'},
-                {'label': 'LoRA', 'value': 'lora'},
-                {'label': 'Freeze First 10', 'value': 'freeze'}
+                {'label': 'Freeze First 6', 'value': 'freeze6'},
+                {'label': 'Freeze First 8', 'value': 'freeze8'},
+                {'label': 'Freeze First 10', 'value': 'freeze10'}
             ],
             value=DEFAULT_FINE_TUNE_METHOD
         ),
@@ -332,76 +329,82 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
         base_data = get_base_data(n_samples=DEFAULT_TRAINING_DATA_SIZE)
         fine_tune_data = get_fine_tune_data(n_samples=DEFAULT_FINE_TUNE_DATA_SIZE)
     
-    if trigger_id == 'reset-button':
-        # Reset everything except the data
-        current_model = None
-        training_history = {'base': [], 'fine_tune': []}
-        return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
-               create_loss_plot({'base': [], 'fine_tune': []}), \
-               "Training reset. Click 'Train Base Model' to start"
-    
-    if trigger_id in ['hidden-size', 'n-layers']:  # Reset on either parameter change
-        # Reset everything when architecture changes
-        current_model = None
-        training_history = {'base': [], 'fine_tune': []}
-        return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
-               create_loss_plot({'base': [], 'fine_tune': []}), \
-               "Model reset. Click 'Train Base Model' to start"
-    
-    elif trigger_id == 'train-base-button':
-        if current_model is None:
-            # Initialize new model if none exists
-            current_model = get_model(hidden_size, fine_tune_method, n_layers)
-            training_history['base'] = []
+    try:
+        if trigger_id == 'reset-button':
+            # Reset everything except the data
+            current_model = None
+            training_history = {'base': [], 'fine_tune': []}
+            return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
+                   create_loss_plot({'base': [], 'fine_tune': []}), \
+                   "Training reset. Click 'Train Base Model' to start"
         
-        # Continue training the existing model
-        trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
-        new_history = trainer.train(base_data, batch_size=batch_size, epochs=training_steps)
+        if trigger_id in ['hidden-size', 'n-layers']:  # Reset on either parameter change
+            # Reset everything when architecture changes
+            current_model = None
+            training_history = {'base': [], 'fine_tune': []}
+            return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
+                   create_loss_plot({'base': [], 'fine_tune': []}), \
+                   "Model reset. Click 'Train Base Model' to start"
         
-        # Append new training history to existing history
-        if not training_history['base']:
-            training_history['base'] = new_history
-        else:
-            training_history['base']['train_loss'].extend(new_history['train_loss'])
-            training_history['base']['val_loss'].extend(new_history['val_loss'])
+        elif trigger_id == 'train-base-button':
+            if current_model is None:
+                # Initialize new model if none exists
+                current_model = get_model(hidden_size, fine_tune_method, n_layers)
+                training_history['base'] = []
             
-        status = "Base model training continued"
-        enable_fine_tune = False
-        
-    elif trigger_id == 'fine-tune-button':
-        if current_model is None:
-            return no_update
-        
-        # Prepare fine-tuning data based on selected mode
-        if fine_tune_data_mode == 'only_new':
-            train_data = fine_tune_data
-            mode_desc = "new data only"
-        else:  # combined
-            train_data = combine_datasets_with_replacement(base_data, fine_tune_data)
-            mode_desc = "combined data"
-        
-        # Fine-tune the model
-        trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
-        new_history = trainer.train(train_data, batch_size=batch_size, epochs=training_steps)
-        
-        # Append new training history to existing history
-        if not training_history['fine_tune']:
-            training_history['fine_tune'] = new_history
-        else:
-            training_history['fine_tune']['train_loss'].extend(new_history['train_loss'])
-            training_history['fine_tune']['val_loss'].extend(new_history['val_loss'])
+            # Continue training the existing model
+            trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
+            new_history = trainer.train(base_data, batch_size=batch_size, epochs=training_steps)
             
-        status = f"Model fine-tuned on {mode_desc} using {fine_tune_method}"
-        enable_fine_tune = False
+            # Append new training history to existing history
+            if not training_history['base']:
+                training_history['base'] = new_history
+            else:
+                training_history['base']['train_loss'].extend(new_history['train_loss'])
+                training_history['base']['val_loss'].extend(new_history['val_loss'])
+                
+            status = "Base model training continued"
+            
+        elif trigger_id == 'fine-tune-button':
+            if current_model is None:
+                return no_update
+            
+            # Mark that we're fine-tuning
+            current_model.is_fine_tuning = True
+            
+            # Prepare fine-tuning data based on selected mode
+            if fine_tune_data_mode == 'only_new':
+                train_data = fine_tune_data
+                mode_desc = "new data only"
+            else:  # combined
+                train_data = combine_datasets_with_replacement(base_data, fine_tune_data)
+                mode_desc = "combined data"
+            
+            # Fine-tune the model
+            trainer = Trainer(current_model, fine_tune_method, learning_rate=learning_rate)
+            new_history = trainer.train(train_data, batch_size=batch_size, epochs=training_steps)
+            
+            # Append new training history to existing history
+            if not training_history['fine_tune']:
+                training_history['fine_tune'] = new_history
+            else:
+                training_history['fine_tune']['train_loss'].extend(new_history['train_loss'])
+                training_history['fine_tune']['val_loss'].extend(new_history['val_loss'])
+                
+            status = f"Model fine-tuned on {mode_desc} using {fine_tune_method}"
+        
+        # Create figures
+        data_fig = create_data_plot(base_data, fine_tune_data, current_model)
+        loss_fig = create_loss_plot(training_history)
+        
+        # Always enable fine-tune button if we have a trained model
+        should_disable_fine_tune = current_model is None
+        
+        return base_clicks, fine_tune_clicks, should_disable_fine_tune, data_fig, loss_fig, status
     
-    # Create figures
-    data_fig = create_data_plot(base_data, fine_tune_data, current_model)
-    loss_fig = create_loss_plot(training_history)
-    
-    # Always enable fine-tune button if we have a trained model
-    should_disable_fine_tune = current_model is None
-    
-    return base_clicks, fine_tune_clicks, should_disable_fine_tune, data_fig, loss_fig, status
+    except Exception as e:
+        print(f"Error in callback: {str(e)}")
+        return no_update
 
 if __name__ == '__main__':
-    app.run_server(debug=True) 
+    app.run_server(debug=True, port=8051) 
