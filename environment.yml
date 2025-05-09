@@ -1,0 +1,12 @@
+name: dashenv
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.9
+  - dash=2.7.0
+  - plotly
+  - pytorch
+  - numpy
+  - werkzeug=2.2.3 

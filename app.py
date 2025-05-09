@@ -178,6 +178,14 @@ def create_loss_plot(history):
     
     return fig
 
+def count_trainable_parameters(model):
+    """Count the total number of trainable parameters in the model."""
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def count_total_parameters(model):
+    """Count the total number of parameters in the model."""
+    return sum(p.numel() for p in model.parameters())
+
 app = dash.Dash(__name__)
 
 # Initialize data at startup
@@ -297,6 +305,31 @@ app.layout = html.Div([
                         'whiteSpace': 'pre-wrap',
                         'fontSize': '12px'
                     })
+        ]),
+        
+        # Add new div for parameter count
+        html.Div([
+            html.H4('Model Parameters'),
+            html.Pre(id='parameter-display', 
+                    style={
+                        'border': '1px solid #ddd',
+                        'padding': '10px',
+                        'backgroundColor': '#f8f9fa',
+                        'fontFamily': 'monospace',
+                        'whiteSpace': 'pre-wrap',
+                        'fontSize': '12px'
+                    })
+        ]),
+        
+        # Add the neural network architecture image
+        html.Div([
+            html.Img(id='arch-image',  # Add this ID
+                    src='assets/nnarch.png',
+                    style={
+                        'width': '100%',
+                        'marginTop': '20px',
+                        'marginBottom': '20px'
+                    })
         ])
     ], style={'width': '35%', 'float': 'right', 'padding': '20px'})
 ])
@@ -307,6 +340,16 @@ base_data = None
 fine_tune_data = None
 training_history = {'base': [], 'fine_tune': []}
 
+def get_arch_image(method):
+    if method == 'freeze6':
+        return 'assets/6.png'
+    elif method == 'freeze8':
+        return 'assets/8.png'
+    elif method == 'freeze10':
+        return 'assets/10.png'
+    else:
+        return 'assets/nnarch.png'
+
 @app.callback(
     Output('train-base-button', 'n_clicks'),
     Output('fine-tune-button', 'n_clicks'),
@@ -314,6 +357,8 @@ training_history = {'base': [], 'fine_tune': []}
     Output('data-plot', 'figure'),
     Output('loss-plot', 'figure'),
     Output('status-display', 'children'),
+    Output('parameter-display', 'children'),
+    Output('arch-image', 'src'),  # Add this line
     Input('hidden-size', 'value'),
     Input('n-layers', 'value'),
     Input('train-base-button', 'n_clicks'),
@@ -335,7 +380,9 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
     if not ctx.triggered:
         return 0, 0, True, create_data_plot(base_data, fine_tune_data, None), \
                create_loss_plot({'base': [], 'fine_tune': []}), \
-               "Click 'Train Base Model' to start"
+               "Click 'Train Base Model' to start", \
+               "No model loaded", \
+               'assets/nnarch.png'  # Default image
     
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
@@ -346,12 +393,15 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
     
     try:
         if trigger_id == 'reset-button':
-            # Reset everything except the data
-            current_model = get_model(hidden_size, fine_tune_method, n_layers)  # Create new model instead of None
+            current_model = get_model(hidden_size, fine_tune_method, n_layers)
+            total_params = count_total_parameters(current_model)
             training_history = {'base': [], 'fine_tune': []}
+            param_info = f"Total parameters: {total_params:,}\nTrainable parameters: {total_params:,}"
             return 0, 0, True, create_data_plot(base_data, fine_tune_data, current_model), \
                    create_loss_plot({'base': [], 'fine_tune': []}), \
-                   "Training reset. Click 'Train Base Model' to start"
+                   "Training reset. Click 'Train Base Model' to start", \
+                   param_info, \
+                   get_arch_image(fine_tune_method)  # Add image source
         
         if trigger_id in ['hidden-size', 'n-layers']:  # Reset on either parameter change
             # Reset everything when architecture changes
@@ -359,7 +409,9 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
             training_history = {'base': [], 'fine_tune': []}
             return 0, 0, True, create_data_plot(base_data, fine_tune_data, current_model), \
                    create_loss_plot({'base': [], 'fine_tune': []}), \
-                   "Model reset. Click 'Train Base Model' to start"
+                   "Model reset. Click 'Train Base Model' to start", \
+                   "No model loaded", \
+                   get_arch_image(fine_tune_method)  # Add image source
         
         elif trigger_id == 'train-base-button':
             if current_model is None:
@@ -378,6 +430,8 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
                 training_history['base']['train_loss'].extend(new_history['train_loss'])
                 training_history['base']['val_loss'].extend(new_history['val_loss'])
                 
+            total_params = count_total_parameters(current_model)
+            param_info = f"Total parameters: {total_params:,}\nTrainable parameters: {total_params:,}"
             status = "Base model training continued"
             
         elif trigger_id == 'fine-tune-button':
@@ -406,6 +460,14 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
                 training_history['fine_tune']['train_loss'].extend(new_history['train_loss'])
                 training_history['fine_tune']['val_loss'].extend(new_history['val_loss'])
                 
+            if fine_tune_method in ['none', 'full']:
+                param_count = count_total_parameters(current_model)
+                trainable_count = param_count
+            else:
+                param_count = count_total_parameters(current_model)
+                trainable_count = count_trainable_parameters(current_model)
+            
+            param_info = f"Total parameters: {param_count:,}\nTrainable parameters: {trainable_count:,}"
             status = f"Model fine-tuned on {mode_desc} using {fine_tune_method}"
         
         # Create figures
@@ -416,11 +478,59 @@ def update_model(hidden_size, n_layers, base_clicks, fine_tune_clicks,
         should_disable_fine_tune = current_model is None
         
         if trigger_id == 'fine-tune-method':
+            if current_model is not None:  # Only update parameters if we have a model
+                # Store current weights
+                state_dict = current_model.state_dict()
+                
+                # Create new model with the new fine-tuning method
+                current_model = get_model(hidden_size, fine_tune_method, n_layers)
+                current_model.load_state_dict(state_dict)  # Restore weights
+                current_model.is_fine_tuning = True  # Mark as fine-tuning to apply freezing
+                
+                # Re-apply the fine-tuning method to ensure proper freezing
+                if fine_tune_method == 'none':
+                    # Freeze all parameters
+                    for param in current_model.parameters():
+                        param.requires_grad = False
+                elif fine_tune_method == 'freeze6':
+                    # Freeze first 6 layers
+                    for i in range(min(6, len(current_model.layers))):
+                        for param in current_model.layers[i].parameters():
+                            param.requires_grad = False
+                        for param in current_model.bn_layers[i].parameters():
+                            param.requires_grad = False
+                elif fine_tune_method == 'freeze8':
+                    # Freeze first 8 layers
+                    for i in range(min(8, len(current_model.layers))):
+                        for param in current_model.layers[i].parameters():
+                            param.requires_grad = False
+                        for param in current_model.bn_layers[i].parameters():
+                            param.requires_grad = False
+                elif fine_tune_method == 'freeze10':
+                    # Freeze first 10 layers
+                    for i in range(min(10, len(current_model.layers))):
+                        for param in current_model.layers[i].parameters():
+                            param.requires_grad = False
+                        for param in current_model.bn_layers[i].parameters():
+                            param.requires_grad = False
+                
+                # Count parameters
+                param_count = count_total_parameters(current_model)
+                trainable_count = count_trainable_parameters(current_model)
+                param_info = f"Total parameters: {param_count:,}\nTrainable parameters: {trainable_count:,}"
+            else:
+                param_info = "No model loaded"
+            
             return base_clicks, fine_tune_clicks, should_disable_fine_tune, \
                    create_data_plot(base_data, fine_tune_data, current_model, fine_tune_method), \
-                   loss_fig, "Fine-tuning method changed"
+                   loss_fig, \
+                   "Fine-tuning method changed", \
+                   param_info, \
+                   get_arch_image(fine_tune_method)  # Add image source
         
-        return base_clicks, fine_tune_clicks, should_disable_fine_tune, data_fig, loss_fig, status
+        return base_clicks, fine_tune_clicks, should_disable_fine_tune, \
+               data_fig, loss_fig, status, param_info, \
+               get_arch_image(fine_tune_method)  # Add image source
     
     except Exception as e:
         print(f"Error in callback: {str(e)}")
