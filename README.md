@@ -1,55 +1,51 @@
-# Neural Networks Interactive Demo
+# Fine-Tuning Demo: Non-linear Function Adaptation
 
-This interactive demo was presented as part of the [Understanding Gulf Ocean Systems Grants Seminar Series](https://www.nationalacademies.org/our-work/understanding-gulf-ocean-systems-grants-seminar-series).
+This repository is an attempt to show the concept of fine-tuning through a simple yet illustrative example. It shows how a neural network can adapt to local changes in a non-linear function while preserving its original learning.
 
 ## Overview
 
-This application provides an interactive visualization of neural network training fundamentals. It allows users to experiment with different aspects of neural network training in real-time, making it an excellent educational tool for understanding deep learning concepts.
+The demo consists of three main phases:
+1. **Initial Training**: Train a neural network to approximate a non-linear function across the full domain [0,4]
+2. **Data Modification**: Introduce changes to a specific section of the input domain [2,3]
+3. **Fine-Tuning**: Adapt the model to the modified section while maintaining performance on the original function
 
 ## Features
 
-- **Multiple Dataset Types**:
-  - Linear data
-  - Non-linear data
-  - Binary classification data
+- **Interactive Visualization**:
+  - Real-time plotting of original and modified functions
+  - Color-coded data points (blue for base, red for fine-tuning)
+  - Training and validation points with different markers
+  - Loss curves for both training phases
+  - Neural network architecture visualization
 
-- **Various Model Architectures**:
-  - Single Neuron
-  - Multi-layer Network
-  - Deep Network (20 layers)
-  - Deep Network with Batch Normalization
-  - Binary Classifier
-
-- **Interactive Training Controls**:
-  - Step-by-step training
-  - Batch training (500 steps)
-  - Adjustable learning rate
-  - Configurable batch size
-  - Variable dataset size
+- **Training Controls**:
+  - Adjustable learning rate (default: 0.001)
+  - Multiple layer freezing options (6, 8, or 10 layers)
+  - Configurable batch size (default: 512)
+  - Training step control (default: 50 steps)
   - Model reset functionality
 
-- **Real-time Visualizations**:
-  - Data points (training, validation, and test sets)
-  - Model predictions
-  - Training and validation loss curves
-  - Backpropagation computations
-  - Model parameters
+- **Data Generation**:
+  - Base dataset: 10,000 samples
+  - Fine-tuning dataset: 1,000 samples in [2,3] range
+  - Automatic train/validation split
+  - Two fine-tuning modes: combined or new data only
 
 ## Installation
 
 1. Clone this repository:
 ```bash
-git clone git@github.com:olmozavala/intro_to_ai_in_oceanography.git
+git clone git@github.com:olmozavala/fine_tuning_demo.git
 ```
 
 2. Install the required dependencies:
 ```bash
-pip install torch numpy dash plotly
+pip install torch numpy matplotlib plotly dash
 ```
 
 ## Usage
 
-1. Run the application:
+1. Run the demonstration:
 ```bash
 python app.py
 ```
@@ -59,48 +55,78 @@ python app.py
 http://localhost:8050
 ```
 
+3. The interface will guide you through:
+   - Initial model training on the original function
+   - Visualization of the modified data section
+   - Fine-tuning process with performance monitoring
+
+## Implementation Details
+
+### Model Architecture
+- Feed-forward neural network with configurable layers (default: 11 layers)
+- Adjustable hidden size (default: 20 units)
+- ReLU activation functions
+- Batch normalization between layers
+- Parameter counting display for transparency
+
+### Fine-Tuning Methods
+1. **None**: All parameters frozen (baseline)
+2. **Full**: All parameters trainable
+3. **Freeze6**: First 6 layers frozen
+4. **Freeze8**: First 8 layers frozen
+5. **Freeze10**: First 10 layers frozen
+
+### Data Structure
+- **Base Function**: Continuous non-linear function over [0,4]
+- **Modified Section**: Complex function in [2,3] combining:
+  - Sinusoidal oscillations: sin(2x) * cos(3x)
+  - High-frequency components: 0.2 * sin(16x)
+  - Non-linear transformations: 0.2 * tanh(x²)
+  - Random noise (std: 0.1)
+
+### Training Process
+1. **Initial Training**:
+   - Learn the complete non-linear function
+   - Automatic validation split
+   - Loss monitoring for both training and validation
+   - Model state saving after convergence
+
+2. **Fine-Tuning Options**:
+   - Combined Mode: Train on both original and new data
+   - New Data Only Mode: Focus exclusively on modified section
+   - Automatic learning rate adjustment
+   - Selective layer freezing based on chosen method
+
+## Best Practices Demonstrated
+
+- Proper learning rate selection for fine-tuning
+- Strategic layer freezing with multiple options
+- Balanced dataset creation with validation splits
+- Real-time loss monitoring
+- Preventing catastrophic forgetting through:
+  - Selective layer freezing
+  - Combined dataset training option
+  - Gradual adaptation strategies
+
 ## File Structure
 
-- `app.py`: Main Dash application with the interactive interface
-- `models.py`: Neural network model architectures
-- `data.py`: Dataset generation functions
-- `training.py`: Training logic and optimization
+```
+├── app.py            # Dash application and main interface
+├── model.py          # Neural network architecture
+├── data.py           # Data generation utilities
+├── training.py       # Training and fine-tuning logic
+├── assets/           # Network architecture images
+└── README.md
+```
 
-## How to Use
+## Contributing
 
-1. Select a dataset type (Linear, Non-linear, or Classification)
-2. Choose a model architecture
-3. Configure training parameters:
-   - Number of data points
-   - Batch size
-   - Learning rate
-4. Use the control buttons:
-   - 'Step' for single training step
-   - 'Step 500' for batch training
-   - 'Reset' to reinitialize the model
-5. Enable 'Show Backpropagation' to view detailed computations
-6. Monitor training progress through:
-   - Main plot showing data and model predictions
-   - Loss plot showing training and validation losses
-   - Model parameters display
-
-## Educational Features
-
-- Visualize how different model architectures learn
-- Understand the impact of hyperparameters
-- See backpropagation in action
-- Compare training behaviors with different optimizations (e.g., batch normalization)
-- Observe overfitting and underfitting in real-time
-
-## Interface Preview
-
-![Neural Network Interactive Interface](imgs/interface.png)
-
-The interface provides a comprehensive view of the neural network training process:
-- Left panel: Training controls and model configuration
-- Center: Real-time visualization of data and model predictions
-- Right: Loss curves and model parameters
-- Bottom: Backpropagation visualization (when enabled)
+Contributions to improve the demonstration are welcome:
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
 
 ## License
 
